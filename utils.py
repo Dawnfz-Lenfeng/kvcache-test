@@ -2,7 +2,13 @@ import json
 import os
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    DynamicCache,
+    PreTrainedModel,
+    PreTrainedTokenizer,
+)
 
 
 def get_position_ids(start_position: int, length: int):
@@ -51,7 +57,9 @@ class Processor:
         self.tokenizer, self.model = self._init_model(model_name, device)
         self.system_kv_cache = None
 
-    def _init_model(self, model_name: str, device: str):
+    def _init_model(
+        self, model_name: str, device: str
+    ) -> tuple[PreTrainedTokenizer, PreTrainedModel]:
         """初始化模型和tokenizer"""
         tokenizer = AutoTokenizer.from_pretrained(model_name, device_map=device)
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map=device)

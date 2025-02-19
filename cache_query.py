@@ -5,9 +5,19 @@ from cache_prep import SYSTEM_PROMPT
 from utils import KVCache, Processor, convert_paper_to_text, get_position_ids
 
 QUERY_TEMPLATE = "{QUERY_PROMPT}\n<|im_end|>\n<|im_start|>assistant\n"
-QUERY_PROMPT = """]\nDetermine if each paper in the provided list is related to AI. The number of papers is {num_papers}.
+QUERY_PROMPT = [
+    """]\nDetermine if each paper in the provided list is related to AI. The number of papers is {num_papers}.
 For each paper, answer "yes" if the paper is about AI, and "no" if the paper is not about AI. 
-Provide your answer in the following format: {example}, where each element corresponds to the respective paper."""
+Provide your answer in the following format: {example}, where each element corresponds to the respective paper.""",
+    """]\nTell me the json content of papers. Example: [{"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}].""",
+]
+MAX_TOKEN = 10000
+DEBUG = False
+
+
+def set_debug_mode():
+    global DEBUG
+    DEBUG = True
 
 
 def _generate_example_answers(num_papers: int):
@@ -20,8 +30,10 @@ def _generate_example_answers(num_papers: int):
 
 def _generate_query_messages(num_papers: int):
     """根据论文数量生成查询消息"""
-    example = _generate_example_answers(num_papers)
-    return QUERY_PROMPT.format(num_papers=num_papers, example=example)
+    if not DEBUG:
+        example = _generate_example_answers(num_papers)
+        return QUERY_PROMPT[0].format(num_papers=num_papers, example=example)
+    return QUERY_PROMPT[1]
 
 
 class QwenQueryProcessor(Processor):
@@ -62,7 +74,7 @@ class QwenQueryProcessor(Processor):
         with torch.inference_mode():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=100,
+                max_new_tokens=MAX_TOKEN,
                 num_beams=1,
                 do_sample=False,  # 不使用采样
                 temperature=1.0,  # 使用默认温度
@@ -127,7 +139,6 @@ class QwenQueryProcessor(Processor):
         input_ids: torch.Tensor,
         kv_cache: DynamicCache,
         position_ids: list[int],
-        max_new_tokens: int = 100,
     ) -> str:
         """生成响应"""
         input_ids = input_ids.to("cuda")
@@ -152,7 +163,7 @@ class QwenQueryProcessor(Processor):
             # 自回归生成时的position_id从上一个位置开始递增
             next_position = position_ids[0][-1].item() + 1
 
-            for _ in range(max_new_tokens - 1):
+            for _ in range(MAX_TOKEN - 1):
                 curr_position = torch.tensor([[next_position]], device="cuda")
                 next_position += 1
 

@@ -102,8 +102,13 @@ def main():
     parser.add_argument(
         "--generate-cache", action="store_true", help="Generate cache before querying"
     )
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
 
     args = parser.parse_args()
+
+    if args.debug:
+        from cache_query import set_debug_mode
+        set_debug_mode()
 
     if args.generate_cache:
         generate_cache(args.model_name, args.cache_dir, args.data_path, args.batch_size)
