@@ -108,6 +108,7 @@ def main():
 
     if args.debug:
         from cache_query import set_debug_mode
+
         set_debug_mode()
 
     if args.generate_cache:

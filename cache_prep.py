@@ -1,6 +1,12 @@
 import torch
 
-from utils import KVCache, Processor, convert_paper_to_text, get_position_ids
+from utils import (
+    KVCache,
+    Processor,
+    convert_paper_to_text,
+    get_position_ids,
+    merge_kv_caches,
+)
 
 SYSTEM_TEMPLATE = "<|im_start|>system\n{SYSTEM_PROMPT}\n<|im_end|>\n<|im_start|>user\n["
 SYSTEM_PROMPT = "You are a helpful data analyst. You will receive datas containing various fields and their corresponding values, representing different attributes. Use these fields to provide answers to the user query. The user query will indicate which fields to use for your response. Your response should contain only the answer and no additional formatting."
@@ -29,11 +35,21 @@ class QwenCachePrep(Processor):
         current_position = self.system_kv_cache.length
 
         all_kv_caches = []
+        current_kv_cache = None
 
         for idx, content in enumerate(contents):
             text = convert_paper_to_text(content)
             name = f"{batch_idx + idx}"
-            kv_cache = self._generate_cache(text, name, current_position)
+            kv_cache = self._generate_cache(
+                text,
+                name,
+                start_position=current_position,
+                past_kv_cache=current_kv_cache,
+            )
+            if current_kv_cache is None:
+                current_kv_cache = kv_cache
+            else:
+                current_kv_cache = merge_kv_caches([current_kv_cache, kv_cache])
             all_kv_caches.append(kv_cache)
             current_position += kv_cache.length
 
@@ -44,6 +60,7 @@ class QwenCachePrep(Processor):
         text: str,
         name: str,
         start_position: int = 0,
+        past_kv_cache: KVCache = None,
     ):
         """生成KV缓存对象"""
         token_ids = self.tokenizer.encode(
@@ -57,6 +74,9 @@ class QwenCachePrep(Processor):
                 input_ids=token_ids,
                 position_ids=torch.tensor([position_ids], dtype=torch.long),
                 use_cache=True,
+                past_key_values=(
+                    past_kv_cache.key_value_pairs if past_kv_cache else None
+                ),
                 output_hidden_states=True,
             )
         kv_cache = output.past_key_values

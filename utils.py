@@ -64,3 +64,25 @@ class Processor:
         tokenizer = AutoTokenizer.from_pretrained(model_name, device_map=device)
         model = AutoModelForCausalLM.from_pretrained(model_name, device_map=device)
         return tokenizer, model
+
+
+def merge_kv_caches(kv_caches: list[KVCache]):
+    """合并多个KV缓存"""
+    merged_kv_cache = []
+
+    # 对每一层transformer进行合并
+    num_layers = len(kv_caches[0].key_value_pairs)
+    for layer_idx in range(num_layers):
+        layer_keys = [cache.key_value_pairs.key_cache[layer_idx] for cache in kv_caches]
+        layer_values = [
+            cache.key_value_pairs.value_cache[layer_idx] for cache in kv_caches
+        ]
+
+        merged_layer_k = torch.cat(layer_keys, dim=2)
+        merged_layer_v = torch.cat(layer_values, dim=2)
+
+        merged_kv_cache.append((merged_layer_k, merged_layer_v))
+
+    merged_length = sum(cache.length for cache in kv_caches)
+
+    return KVCache(DynamicCache.from_legacy_cache(merged_kv_cache), merged_length)

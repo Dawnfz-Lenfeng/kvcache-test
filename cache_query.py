@@ -2,14 +2,21 @@ import torch
 from transformers import DynamicCache
 
 from cache_prep import SYSTEM_PROMPT
-from utils import KVCache, Processor, convert_paper_to_text, get_position_ids
+from utils import (
+    KVCache,
+    Processor,
+    convert_paper_to_text,
+    get_position_ids,
+    merge_kv_caches,
+)
 
 QUERY_TEMPLATE = "{QUERY_PROMPT}\n<|im_end|>\n<|im_start|>assistant\n"
 QUERY_PROMPT = [
     """]\nDetermine if each paper in the provided list is related to AI. The number of papers is {num_papers}.
 For each paper, answer "yes" if the paper is about AI, and "no" if the paper is not about AI. 
 Provide your answer in the following format: {example}, where each element corresponds to the respective paper.""",
-    """]\nTell me the json content of papers. Example: [{"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}].""",
+    # """]\nTell me the json content of papers. Example: [{"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}].""",
+    """]\nTell me the number of papers. Example: 4."""
 ]
 MAX_TOKEN = 10000
 DEBUG = False
@@ -94,9 +101,9 @@ class QwenQueryProcessor(Processor):
 
     def query_with_cache(self, batch_indices: list[int]) -> str:
         kv_caches = [KVCache.load(self.cache_dir, f"{idx}") for idx in batch_indices]
-        merged_kv_cache = self._merge_kv_caches([self.system_kv_cache] + kv_caches)
+        merged_kv_cache = merge_kv_caches([self.system_kv_cache] + kv_caches)
 
-        # 处理查询
+        # 处理查询``
         query_prompt = QUERY_TEMPLATE.format(
             QUERY_PROMPT=_generate_query_messages(len(batch_indices))
         )
@@ -110,29 +117,6 @@ class QwenQueryProcessor(Processor):
         return self._generate_response(
             query_token_ids, merged_kv_cache.key_value_pairs, query_position_ids
         )
-
-    def _merge_kv_caches(self, kv_caches: list[KVCache]):
-        """合并多个KV缓存"""
-        merged_kv_cache = []
-
-        # 对每一层transformer进行合并
-        num_layers = len(kv_caches[0].key_value_pairs)
-        for layer_idx in range(num_layers):
-            layer_keys = [
-                cache.key_value_pairs.key_cache[layer_idx] for cache in kv_caches
-            ]
-            layer_values = [
-                cache.key_value_pairs.value_cache[layer_idx] for cache in kv_caches
-            ]
-
-            merged_layer_k = torch.cat(layer_keys, dim=2)
-            merged_layer_v = torch.cat(layer_values, dim=2)
-
-            merged_kv_cache.append((merged_layer_k, merged_layer_v))
-
-        merged_length = sum(cache.length for cache in kv_caches)
-
-        return KVCache(DynamicCache.from_legacy_cache(merged_kv_cache), merged_length)
 
     def _generate_response(
         self,
