@@ -10,10 +10,9 @@ def get_position_ids(start_position: int, length: int):
     return list(range(start_position, start_position + length))
 
 
-def convert_paper_to_text(content: dict[str, str], idx: int):
+def convert_paper_to_text(content: dict[str, str]):
     """将论文转换为文本"""
-    paper_id = f"paper{idx}"
-    return json.dumps({paper_id: content}) + ", "
+    return json.dumps(content) + ", "
 
 
 class KVCache:
@@ -41,7 +40,7 @@ class KVCache:
         torch.save(self, cache_path)
 
     @classmethod
-    def load(cls, cache_dir: str, name: str):
+    def load(cls, cache_dir: str, name: str) -> "KVCache":
         """加载KVCache对象"""
         cache_path = f"{cache_dir}/{name}_cache.pt"
         return torch.load(cache_path)

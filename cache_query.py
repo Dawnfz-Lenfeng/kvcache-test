@@ -10,12 +10,18 @@ For each paper, answer "yes" if the paper is about AI, and "no" if the paper is 
 Provide your answer in the following format: {example}, where each element corresponds to the respective paper."""
 
 
-def _generate_example_answers(num_papers: int) -> str:
+def _generate_example_answers(num_papers: int):
     """根据论文数量生成示例答案"""
     example = ["yes", "no"] * (num_papers // 2)
     if num_papers % 2:  # 如果是奇数，添加一个"yes"
         example.append("yes")
     return str(example)
+
+
+def _generate_query_messages(num_papers: int):
+    """根据论文数量生成查询消息"""
+    example = _generate_example_answers(num_papers)
+    return QUERY_PROMPT.format(num_papers=num_papers, example=example)
 
 
 class QwenQueryProcessor(Processor):
@@ -32,17 +38,12 @@ class QwenQueryProcessor(Processor):
         self.cache_dir = cache_dir
 
     def query_without_cache(self, batch_papers: list[dict]):
-        papers_content = "".join(
-            convert_paper_to_text(paper, idx + 1)
-            for idx, paper in enumerate(batch_papers)
-        )
-        num_papers = len(batch_papers)
-        example = _generate_example_answers(num_papers)
+        papers_content = "".join(convert_paper_to_text(paper) for paper in batch_papers)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": f"{papers_content}{QUERY_PROMPT.format(num_papers=len(batch_papers), example=example)}",
+                "content": f"[{papers_content}{_generate_query_messages(len(batch_papers))}",
             },
         ]
 
@@ -84,12 +85,8 @@ class QwenQueryProcessor(Processor):
         merged_kv_cache = self._merge_kv_caches([self.system_kv_cache] + kv_caches)
 
         # 处理查询
-        num_papers = len(batch_indices)
-        example = _generate_example_answers(num_papers)
         query_prompt = QUERY_TEMPLATE.format(
-            QUERY_PROMPT=QUERY_PROMPT.format(
-                num_papers=len(batch_indices), example=example
-            )
+            QUERY_PROMPT=_generate_query_messages(len(batch_indices))
         )
         query_token_ids = self.tokenizer.encode(
             query_prompt, return_tensors="pt", add_special_tokens=False

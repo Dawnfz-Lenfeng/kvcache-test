@@ -31,8 +31,7 @@ class QwenCachePrep(Processor):
         all_kv_caches = []
 
         for idx, content in enumerate(contents):
-            text = convert_paper_to_text(content, batch_idx + idx + 1)
-            # print(text)
+            text = convert_paper_to_text(content)
             name = f"{batch_idx + idx}"
             kv_cache = self._generate_cache(text, name, current_position)
             all_kv_caches.append(kv_cache)
