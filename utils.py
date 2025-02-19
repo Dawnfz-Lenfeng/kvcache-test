@@ -28,7 +28,6 @@ class KVCache:
         self,
         key_value_pairs: DynamicCache,
         length: int,
-        name: str = None,
     ):
         """
         Args:
@@ -37,12 +36,11 @@ class KVCache:
         """
         self.key_value_pairs = key_value_pairs
         self.length = length
-        self.name = name
 
-    def save(self, cache_dir: str):
+    def save(self, cache_dir: str, name: str):
         """保存整个KVCache对象到文件"""
         os.makedirs(cache_dir, exist_ok=True)
-        cache_path = f"{cache_dir}/{self.name}_cache.pt"
+        cache_path = f"{cache_dir}/{name}_cache.pt"
         torch.save(self, cache_path)
 
     @classmethod

@@ -22,11 +22,9 @@ class QwenCachePrep(Processor):
         """
         super().__init__(model_name, device)
         system_prompt = SYSTEM_TEMPLATE.format(SYSTEM_PROMPT=SYSTEM_PROMPT)
-        self.system_kv_cache = self._generate_cache(system_prompt, "system")
+        self.system_kv_cache = self._generate_cache(system_prompt)
 
-    def get_kv_caches(
-        self, contents: list[dict[str, str]], batch_idx: int
-    ) -> list[KVCache]:
+    def get_kv_caches(self, contents: list[dict[str, str]]) -> list[KVCache]:
         """处理多个内容并生成token IDs和position IDs
 
         Args:
@@ -34,15 +32,13 @@ class QwenCachePrep(Processor):
         """
         current_position = self.system_kv_cache.length
 
-        all_kv_caches = []
+        kv_caches = []
         current_kv_cache = None
 
         for idx, content in enumerate(contents):
             text = convert_paper_to_text(content)
-            name = f"{batch_idx + idx}"
             kv_cache = self._generate_cache(
                 text,
-                name,
                 start_position=current_position,
                 past_kv_cache=current_kv_cache,
             )
@@ -50,15 +46,14 @@ class QwenCachePrep(Processor):
                 current_kv_cache = kv_cache
             else:
                 current_kv_cache = merge_kv_caches([current_kv_cache, kv_cache])
-            all_kv_caches.append(kv_cache)
+            kv_caches.append(kv_cache)
             current_position += kv_cache.length
 
-        return all_kv_caches
+        return kv_caches
 
     def _generate_cache(
         self,
         text: str,
-        name: str,
         start_position: int = 0,
         past_kv_cache: KVCache = None,
     ):
@@ -80,4 +75,4 @@ class QwenCachePrep(Processor):
                 output_hidden_states=True,
             )
         kv_cache = output.past_key_values
-        return KVCache(kv_cache, token_length, name)
+        return KVCache(kv_cache, token_length)

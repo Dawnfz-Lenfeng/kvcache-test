@@ -4,7 +4,7 @@ import os
 import shutil
 
 from cache_prep import QwenCachePrep
-from cache_query import QwenQueryProcessor
+from cache_query import KVCache, QwenQueryProcessor
 
 
 def load_data(file_path):
@@ -28,14 +28,15 @@ def generate_cache(model_name: str, cache_dir: str, data_path: str, batch_size: 
     print(f"Total records: {length}")
 
     processor = QwenCachePrep(model_name)
-    processor.system_kv_cache.save(cache_dir)
+    processor.system_kv_cache.save(cache_dir, name="system")
 
     for batch_idx in range(0, length, batch_size):
         batch_papers = papers[batch_idx : batch_idx + batch_size]
-        kv_caches = processor.get_kv_caches(batch_papers, batch_idx)
-        for kv_cache in kv_caches:
-            kv_cache.save(cache_dir)
-            print(f"Saved cache {kv_cache.name}, length: {kv_cache.length}")
+        kv_caches = processor.get_kv_caches(batch_papers)
+        for i, kv_cache in enumerate(kv_caches):
+            name = batch_idx + i
+            kv_cache.save(cache_dir, name=f"{name}")
+            print(f"Saved cache {name}, length: {kv_cache.length}")
 
 
 def query_papers(model_name: str, cache_dir: str, data_path: str, batch_size: int):
@@ -48,16 +49,19 @@ def query_papers(model_name: str, cache_dir: str, data_path: str, batch_size: in
     print(f"Total records: {length}")
     length = length // batch_size * batch_size
 
+    # 加载缓存
+    kv_caches = [KVCache.load(cache_dir, f"{i}") for i in range(length)]
+
     processor = QwenQueryProcessor(model_name, cache_dir)
     same_count = 0
     total_count = 0
 
     for batch_idx in range(0, length, batch_size):
-        batch_indices = list(range(batch_idx, batch_idx + batch_size))
         batch_papers = papers[batch_idx : batch_idx + batch_size]
+        batch_kv_caches = kv_caches[batch_idx : batch_idx + batch_size]
 
         response_without_cache = processor.query_without_cache(batch_papers)
-        response_with_cache = processor.query_with_cache(batch_indices)
+        response_with_cache = processor.query_with_cache(batch_kv_caches)
 
         total_count += 1
         if response_without_cache == response_with_cache:

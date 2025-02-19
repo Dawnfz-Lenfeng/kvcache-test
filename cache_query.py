@@ -16,7 +16,7 @@ QUERY_PROMPT = [
 For each paper, answer "yes" if the paper is about AI, and "no" if the paper is not about AI. 
 Provide your answer in the following format: {example}, where each element corresponds to the respective paper.""",
     # """]\nTell me the json content of papers. Example: [{"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}].""",
-    """]\nTell me the number of papers. Example: 4."""
+    """]\nTell me the number of papers. Example: 4.""",
 ]
 MAX_TOKEN = 10000
 DEBUG = False
@@ -54,7 +54,6 @@ class QwenQueryProcessor(Processor):
         """
         super().__init__(model_name, device)
         self.system_kv_cache = KVCache.load(cache_dir, "system")
-        self.cache_dir = cache_dir
 
     def query_without_cache(self, batch_papers: list[dict]):
         papers_content = "".join(convert_paper_to_text(paper) for paper in batch_papers)
@@ -99,13 +98,12 @@ class QwenQueryProcessor(Processor):
         )
         return response.strip()
 
-    def query_with_cache(self, batch_indices: list[int]) -> str:
-        kv_caches = [KVCache.load(self.cache_dir, f"{idx}") for idx in batch_indices]
-        merged_kv_cache = merge_kv_caches([self.system_kv_cache] + kv_caches)
+    def query_with_cache(self, batch_kv_caches: list[KVCache]) -> str:
+        merged_kv_cache = merge_kv_caches([self.system_kv_cache] + batch_kv_caches)
 
         # 处理查询``
         query_prompt = QUERY_TEMPLATE.format(
-            QUERY_PROMPT=_generate_query_messages(len(batch_indices))
+            QUERY_PROMPT=_generate_query_messages(len(batch_kv_caches))
         )
         query_token_ids = self.tokenizer.encode(
             query_prompt, return_tensors="pt", add_special_tokens=False
