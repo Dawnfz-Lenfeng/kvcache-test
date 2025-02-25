@@ -10,13 +10,13 @@ from utils import (
     merge_kv_caches,
 )
 
-QUERY_TEMPLATE = "{QUERY_PROMPT}\n<|im_end|>\n<|im_start|>assistant\n"
+QUERY_TEMPLATE = "{QUERY_PROMPT}<|im_end|>\n<|im_start|>assistant\n"
 QUERY_PROMPT = [
     """]\nDetermine if each paper in the provided list is related to AI. The number of papers is {num_papers}.
 For each paper, answer "yes" if the paper is about AI, and "no" if the paper is not about AI. 
 Provide your answer in the following format: {example}, where each element corresponds to the respective paper.""",
     # """]\nTell me the json content of papers. Example: [{"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}, {"title": "xxx", "abstract": "xxx"}].""",
-    """]\nTell me the number of papers. Example: 4.""",
+    """]\nTell me the titles of papers. Example: ["title1", "title2", "title3", "title4"], where each element corresponds to the respective paper.""",
 ]
 MAX_TOKEN = 10000
 DEBUG = False
@@ -55,7 +55,65 @@ class QwenQueryProcessor(Processor):
         super().__init__(model_name, device)
         self.system_kv_cache = KVCache.load(cache_dir, "system")
 
-    def query_without_cache(self, batch_papers: list[dict]):
+    def query_without_cache(self, paper: dict):
+        papers_content = convert_paper_to_text(paper)
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"[{papers_content}{_generate_query_messages(1)}",
+            },
+        ]
+
+        # 使用 tokenizer 的 chat template 处理消息
+        prompt = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda")
+
+        # 设置随机种子
+        torch.manual_seed(42)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(42)
+
+        # 生成响应
+        with torch.inference_mode():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=MAX_TOKEN,
+                num_beams=1,
+                do_sample=False,  # 不使用采样
+                temperature=1.0,  # 使用默认温度
+                top_k=1,  # 只保留最可能的token
+                top_p=1.0,  # 不使用nucleus sampling
+                repetition_penalty=1.0,  # 不使用重复惩罚
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+                use_cache=True,  # 使用模型内部的KV缓存加速生成
+            )
+
+        # 只解码新生成的token
+        response = self.tokenizer.decode(
+            outputs[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
+        )
+        return response.strip()
+
+    def query_with_cache(self, kv_cache: KVCache):
+        # 处理查询``
+        merged_kv_cache = merge_kv_caches([self.system_kv_cache, kv_cache])
+        query_prompt = QUERY_TEMPLATE.format(QUERY_PROMPT=_generate_query_messages(1))
+        query_token_ids = self.tokenizer.encode(
+            query_prompt, return_tensors="pt", add_special_tokens=False
+        )
+        query_position_ids = get_position_ids(
+            merged_kv_cache.length, query_token_ids.shape[-1]
+        )
+
+        return self._generate_response(
+            query_token_ids, merged_kv_cache.key_value_pairs, query_position_ids
+        )
+
+    def query_batch_without_cache(self, batch_papers: list[dict]):
         papers_content = "".join(convert_paper_to_text(paper) for paper in batch_papers)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -98,7 +156,7 @@ class QwenQueryProcessor(Processor):
         )
         return response.strip()
 
-    def query_with_cache(self, batch_kv_caches: list[KVCache]) -> str:
+    def query_batch_with_cache(self, batch_kv_caches: list[KVCache]) -> str:
         merged_kv_cache = merge_kv_caches([self.system_kv_cache] + batch_kv_caches)
 
         # 处理查询``

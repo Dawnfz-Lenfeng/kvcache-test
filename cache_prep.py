@@ -8,7 +8,7 @@ from utils import (
     merge_kv_caches,
 )
 
-SYSTEM_TEMPLATE = "<|im_start|>system\n{SYSTEM_PROMPT}\n<|im_end|>\n<|im_start|>user\n["
+SYSTEM_TEMPLATE = "<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n["
 SYSTEM_PROMPT = "You are a helpful data analyst. You will receive datas containing various fields and their corresponding values, representing different attributes. Use these fields to provide answers to the user query. The user query will indicate which fields to use for your response. Your response should contain only the answer and no additional formatting."
 
 
